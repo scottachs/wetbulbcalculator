@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wet-Bulb Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #12181f;
+    --panel: #1c2530;
+    --panel-edge: #2a3541;
+    --parchment: #eee3c8;
+    --parchment-ink: #2b2418;
+    --brass: #c99a4b;
+    --brass-dim: #8a6f3d;
+    --teal: #5a9aa0;
+    --amber: #e2a63b;
+    --danger: #d64545;
+    --text: #e9e4d8;
+    --text-dim: #9aa4ad;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(circle at 50% -10%, #202b38 0%, var(--ink) 55%);
+    color: var(--text);
+    font-family: 'Spectral', Georgia, serif;
+    display:flex;
+    justify-content:center;
+    padding: 32px 16px 60px;
+    min-height:100vh;
+  }
+  .app{
+    width:100%;
+    max-width:440px;
+    background: linear-gradient(180deg, var(--panel), #171f29);
+    border: 1px solid var(--panel-edge);
+    border-radius: 18px;
+    padding: 26px 26px 22px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .eyebrow{
+    position: relative;
+    display:flex;
+    align-items:baseline;
+    justify-content:center;
+    border-bottom: 1px solid var(--panel-edge);
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+  }
+  .eyebrow h1{
+    font-family:'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin:0;
+    font-weight:700;
+    text-align: center;
+  }
+  .eyebrow span{
+    position: absolute;
+    right: 0;
+    bottom: 12px;
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .locate-btn{
+    width: 100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 8px;
+    background: var(--ink);
+    border: 1px solid var(--brass-dim);
+    color: var(--brass);
+    font-family: 'Space Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 6px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .locate-btn:hover{ background: #202b38; border-color: var(--brass); }
+  .locate-btn:disabled{ opacity: 0.55; cursor: default; }
+  .locate-btn .spin{ display:inline-block; animation: spin 0.9s linear infinite; }
+  @keyframes spin{ from{ transform: rotate(0deg); } to{ transform: rotate(360deg); } }
+  .locate-status{
+    text-align:center;
+    font-size: 11px;
+    color: var(--text-dim);
+    min-height: 14px;
+    margin-bottom: 14px;
+    font-family: 'Space Mono', monospace;
+  }
+  .locate-status.error{ color: var(--danger); }
+  .locate-status.ok{ color: var(--teal); }
+  .gauge-wrap{
+    position:relative;
+    margin: 0 auto 8px;
+    width: 100%;
+    max-width: 340px;
+  }
+  svg#gauge{ width:100%; height:auto; display:block; }
+  .gauge-plate{ fill: #0d1218; stroke: var(--brass-dim); stroke-width: 1.5; opacity: 0.9; }
+  .gauge-rim{ fill: none; stroke: var(--brass); stroke-width: 2.5; opacity: 0.55; }
+  .end-label{ font-family:'Space Mono', monospace; font-size: 11px; fill: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  #needleLine, #needleTip{ transition: none; }
+  .readout{
+    text-align:center;
+    margin-top: 6px;
+  }
+  .value{
+    font-family:'Space Mono', monospace;
+    font-weight:700;
+    font-size: 42px;
+    color: var(--parchment);
+    letter-spacing: 0.01em;
+    line-height:1;
+  }
+  .value sup{ font-size: 20px; top:-1.1em; }
+  .value-label{
+    font-family:'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .risk-banner{
+    display:inline-block;
+    margin-top: 10px;
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--brass-dim);
+    color: var(--ink);
+    background: var(--teal);
+    transition: background 0.4s;
+  }
+  .risk-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .risk-row .risk-banner{ margin-top:0; }
+  .info-wrap{
+    position: relative;
+    display:inline-flex;
+  }
+  .info-btn{
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 1px solid var(--brass-dim);
+    color: var(--brass);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor: default;
+    user-select:none;
+  }
+  .info-tooltip{
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    background: var(--parchment);
+    color: var(--parchment-ink);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 12px 24px -8px rgba(0,0,0,0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .info-tooltip::after{
+    content:'';
+    position:absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--parchment);
+  }
+  .info-tooltip .tooltip-label{
+    display:block;
+    font-family:'Space Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b5c34;
+    margin-bottom: 4px;
+  }
+  .info-wrap:hover .info-tooltip,
+  .info-wrap:focus-within .info-tooltip{
+    opacity: 1;
+    visibility: visible;
+  }
+  .controls{ margin-top: 8px; }
+
+  .control-row{ margin-bottom: 16px; }
+  .control-row label{
+    display:block;
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .row-inputs{ display:flex; align-items:center; gap:10px; }
+  input[type=range]{
+    flex: 1;
+    height: 4px;
+    -webkit-appearance:none;
+    background: linear-gradient(90deg, var(--teal), var(--amber) 55%, var(--danger));
+    border-radius: 3px;
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:16px; height:16px;
+    border-radius:50%;
+    background: var(--parchment);
+    border: 2px solid var(--brass);
+    cursor:pointer;
+    margin-top:-1px;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:14px; height:14px;
+    border-radius:50%;
+    background: var(--parchment);
+    border: 2px solid var(--brass);
+    cursor:pointer;
+  }
+  .num-wrap{
+    display:flex;
+    align-items:center;
+    background: var(--ink);
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+    padding: 4px 8px;
+    min-width: 74px;
+  }
+  input[type=number]{
+    width: 44px;
+    background:transparent;
+    border:none;
+    color: var(--parchment);
+    font-family:'Space Mono', monospace;
+    font-size: 14px;
+    text-align:right;
+    outline:none;
+  }
+  .num-wrap span{
+    font-family:'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-left: 2px;
+  }
+  .unit-toggle{
+    display:flex;
+    justify-content:center;
+    gap: 6px;
+    margin: 4px 0 20px;
+  }
+  .unit-toggle button{
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    background: var(--ink);
+    border: 1px solid var(--panel-edge);
+    color: var(--text-dim);
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor:pointer;
+    transition: all 0.2s;
+  }
+  .unit-toggle button.active{
+    background: var(--brass);
+    color: var(--ink);
+    border-color: var(--brass);
+  }
+  .legend-card{
+    background: var(--parchment);
+    color: var(--parchment-ink);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+  }
+  .legend-title{
+    font-family:'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6b5c34;
+    margin-bottom: 8px;
+  }
+  .legend-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 3px 0;
+    border-top: 1px dashed rgba(43,36,24,0.15);
+  }
+  .legend-row:first-of-type{ border-top:none; }
+  .legend-left{ display:flex; align-items:center; gap:8px; }
+  .swatch{ width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+  .legend-range{ font-family:'Space Mono', monospace; font-size:11.5px; color:#6b5c34; }
+  .legend-right{ display:flex; align-items:center; gap:8px; }
+  .legend-card .info-btn{ background: var(--panel); }
+  .legend-card .info-tooltip{ color: var(--parchment-ink); left: auto; right: -4px; transform: none; width: 190px; }
+  .legend-card .info-tooltip::after{ left: auto; right: 10px; transform: none; }
+  footer{
+    margin-top: 16px;
+    font-size: 11px;
+    line-height:1.5;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="eyebrow">
+    <h1>Wet-Bulb Calculator</h1>
+    <span id="clockUnit">°F</span>
+  </div>
+
+  <button id="locateBtn" class="locate-btn">
+    <span id="locateIcon">📍</span>
+    <span id="locateLabel">Get local temperature</span>
+  </button>
+  <div id="locateStatus" class="locate-status"></div>
+
+  <div class="gauge-wrap">
+    <svg id="gauge" viewBox="0 0 300 180">
+      <circle class="gauge-plate" cx="150" cy="160" r="133"/>
+      <g id="bandLayer"></g>
+      <circle class="gauge-rim" cx="150" cy="160" r="137"/>
+      <g id="tickLayer"></g>
+      <text class="end-label" x="20" y="177">LOW</text>
+      <text class="end-label" x="254" y="177">HIGH</text>
+      <line id="needleLine" x1="150" y1="160" x2="150" y2="60" stroke="var(--parchment)" stroke-width="4" stroke-linecap="round"/>
+      <circle id="needleTip" cx="150" cy="60" r="3.5" fill="var(--danger)"/>
+      <circle cx="150" cy="160" r="10" fill="var(--brass)" stroke="var(--ink)" stroke-width="1.5"/>
+      <circle cx="150" cy="160" r="4" fill="#8a6f3d"/>
+    </svg>
+    <div class="readout">
+      <div class="value" id="wbValue">--</div>
+      <div class="value-label">Wet-Bulb Temperature</div>
+      <div class="risk-row">
+        <div class="risk-banner" id="riskBanner">—</div>
+        <span class="info-wrap" tabindex="0">
+          <span class="info-btn">i</span>
+          <span class="info-tooltip">
+            <span class="tooltip-label">Avoid at this level</span>
+            <span id="tooltipText">—</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-row">
+      <label>Dry-bulb (air) temperature</label>
+      <div class="row-inputs">
+        <input type="range" id="tempSlider" min="0" max="120" step="1" value="90">
+        <div class="num-wrap">
+          <input type="number" id="tempNum" value="90">
+          <span id="tempUnitLabel">°F</span>
+        </div>
+      </div>
+    </div>
+    <div class="control-row">
+      <label>Relative humidity</label>
+      <div class="row-inputs">
+        <input type="range" id="rhSlider" min="1" max="100" step="1" value="55">
+        <div class="num-wrap">
+          <input type="number" id="rhNum" value="55">
+          <span>%</span>
+        </div>
+      </div>
+    </div>
+    <div class="unit-toggle">
+      <button data-unit="F" class="active" id="btnF">°F</button>
+      <button data-unit="C" id="btnC">°C</button>
+    </div>
+  </div>
+
+  <div class="legend-card" id="legendCard">
+    <div class="legend-title">Reference: heat-stress guide</div>
+    <div id="legendRows"></div>
+  </div>
+
+  <footer>
+    Wet-bulb estimated with Stull's (2011) psychrometric approximation, valid roughly 1–100% RH.
+    Heat-stress bands are a simplified general guide, not an official WBGT reading (which also
+    factors wind and radiant heat) — treat as a starting point, not a safety determination.
+  </footer>
+</div>
+
+<script>
+// ---- Stull (2011) wet-bulb approximation, Celsius in, Celsius out ----
+function wetBulbC(Tc, RH) {
+  return Tc * Math.atan(0.151977 * Math.sqrt(RH + 8.313659))
+    + Math.atan(Tc + RH)
+    - Math.atan(RH - 1.676331)
+    + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH)
+    - 4.686035;
+}
+const c2f = c => c * 9/5 + 32;
+const f2c = f => (f - 32) * 5/9;
+
+// ---- Gauge geometry ----
+const GMIN = -10, GMAX = 45; // Celsius range of the dial
+const cx = 150, cy = 160, r = 118;
+const ANGLE_MIN = 180, ANGLE_MAX = 0; // true semicircle: left = min, right = max
+
+function polar(cxp, cyp, rad, angleDeg){
+  const rad_ = angleDeg * Math.PI / 180;
+  return { x: cxp + rad * Math.cos(rad_), y: cyp - rad * Math.sin(rad_) };
+}
+function arcPath(rad, a1, a2){
+  const p1 = polar(cx, cy, rad, a1);
+  const p2 = polar(cx, cy, rad, a2);
+  const large = Math.abs(a1 - a2) > 180 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rad} ${rad} 0 ${large} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+}
+function valToAngle(v){
+  const t = Math.min(1, Math.max(0, (v - GMIN) / (GMAX - GMIN)));
+  return ANGLE_MIN - t * (ANGLE_MIN - ANGLE_MAX);
+}
+
+// Heat-stress bands, in Celsius wet-bulb thresholds (upper bound of each band)
+const bands = [
+  { upto: 15, label: "Minimal",   color: "#5a9aa0", advice: "No special precautions needed." },
+  { upto: 21, label: "Low",       color: "#7fb5ad", advice: "Normal activity is fine. Stay aware if you're not used to heat yet." },
+  { upto: 25, label: "Moderate",  color: "#e2a63b", advice: "Don't skip hydration breaks during hard exertion — drink before you're thirsty." },
+  { upto: 28, label: "High",      color: "#dd8b3b", advice: "Don't push continuous strenuous outdoor activity past 30–45 min without shade and rest." },
+  { upto: 31, label: "Very high", color: "#d4602f", advice: "Avoid strenuous outdoor exertion if you can. If unavoidable, cap work/exercise at 15–20 min between rests." },
+  { upto: 35, label: "Extreme",   color: "#d64545", advice: "Avoid outdoor exertion altogether. Essential outdoor work only, with breaks every 5–10 min in shade or AC." },
+  { upto: Infinity, label: "Beyond tolerance", color: "#7a1f1f", advice: "Avoid outdoor exposure entirely — the body can struggle to cool itself even at rest at this level." }
+];
+
+function buildGauge(){
+  const bandLayer = document.getElementById('bandLayer');
+  const tickLayer = document.getElementById('tickLayer');
+  bandLayer.innerHTML = '';
+  tickLayer.innerHTML = '';
+
+  let prev = GMIN;
+  bands.forEach(b => {
+    const upper = Math.min(b.upto, GMAX);
+    if (upper <= prev) return;
+    const a1 = valToAngle(prev);
+    const a2 = valToAngle(upper);
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', arcPath(r, a1, a2));
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke', b.color);
+    path.setAttribute('stroke-width','16');
+    path.setAttribute('stroke-linecap','butt');
+    bandLayer.appendChild(path);
+    prev = upper;
+    if (b.upto === Infinity) return;
+  });
+
+  // ticks every 5C
+  for (let v = GMIN; v <= GMAX; v += 5) {
+    const a = valToAngle(v);
+    const p1 = polar(cx, cy, r + 10, a);
+    const p2 = polar(cx, cy, r + 18, a);
+    const tick = document.createElementNS('http://www.w3.org/2000/svg','line');
+    tick.setAttribute('x1', p1.x); tick.setAttribute('y1', p1.y);
+    tick.setAttribute('x2', p2.x); tick.setAttribute('y2', p2.y);
+    tick.setAttribute('stroke', 'var(--brass-dim)');
+    tick.setAttribute('stroke-width','1.5');
+    tickLayer.appendChild(tick);
+  }
+}
+
+function setNeedle(vC){
+  const angle = valToAngle(vC);
+  const tipR = r - 14; // stay just inside the band ring
+  const tip = polar(cx, cy, tipR, angle);
+  const line = document.getElementById('needleLine');
+  line.setAttribute('x1', cx);
+  line.setAttribute('y1', cy);
+  line.setAttribute('x2', tip.x.toFixed(2));
+  line.setAttribute('y2', tip.y.toFixed(2));
+  const dot = document.getElementById('needleTip');
+  dot.setAttribute('cx', tip.x.toFixed(2));
+  dot.setAttribute('cy', tip.y.toFixed(2));
+}
+
+function riskFor(wbC){
+  for (const b of bands) if (wbC <= b.upto) return b;
+  return bands[bands.length - 1];
+}
+
+// ---- State & unit handling ----
+let unit = 'F';
+
+function currentDryC(){
+  const raw = parseFloat(document.getElementById('tempNum').value);
+  return unit === 'F' ? f2c(raw) : raw;
+}
+
+function renderLegend(){
+  const rows = document.getElementById('legendRows');
+  rows.innerHTML = '';
+  let prev = GMIN;
+  bands.forEach(b => {
+    const lo = prev;
+    const hi = b.upto;
+    const loDisp = unit === 'F' ? Math.round(c2f(lo)) : Math.round(lo);
+    const hiDisp = hi === Infinity ? null : (unit === 'F' ? Math.round(c2f(hi)) : Math.round(hi));
+    const rangeText = hiDisp === null ? `${loDisp}°${unit}+` : `${loDisp}–${hiDisp}°${unit}`;
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<div class="legend-left"><span class="swatch" style="background:${b.color}"></span>${b.label}</div><div class="legend-right"><span class="legend-range">${rangeText}</span><span class="info-wrap" tabindex="0"><span class="info-btn">i</span><span class="info-tooltip"><span class="tooltip-label">Avoid at this level</span><span>${b.advice}</span></span></span></div>`;
+    rows.appendChild(row);
+    prev = hi;
+  });
+}
+
+function update(){
+  const Tc = currentDryC();
+  const RH = Math.min(100, Math.max(1, parseFloat(document.getElementById('rhNum').value)));
+  const wbC = wetBulbC(Tc, RH);
+  const displayVal = unit === 'F' ? c2f(wbC) : wbC;
+  document.getElementById('wbValue').innerHTML = `${displayVal.toFixed(1)}<sup>°${unit}</sup>`;
+  setNeedle(wbC);
+  const risk = riskFor(wbC);
+  const banner = document.getElementById('riskBanner');
+  banner.textContent = risk.label;
+  banner.style.background = risk.color;
+  banner.style.color = (risk.label === 'Extreme' || risk.label === 'Beyond tolerance') ? '#f4e9d8' : '#12181f';
+  document.getElementById('tooltipText').textContent = risk.advice;
+}
+
+function syncSliderFromNum(sliderId, numId){
+  document.getElementById(sliderId).value = document.getElementById(numId).value;
+}
+function syncNumFromSlider(sliderId, numId){
+  document.getElementById(numId).value = document.getElementById(sliderId).value;
+}
+
+function wireControl(sliderId, numId){
+  const slider = document.getElementById(sliderId);
+  const num = document.getElementById(numId);
+  slider.addEventListener('input', () => { num.value = slider.value; update(); });
+  num.addEventListener('input', () => { slider.value = num.value; update(); });
+}
+
+function setUnit(newUnit){
+  if (newUnit === unit) return;
+  const tempNum = document.getElementById('tempNum');
+  const tempSlider = document.getElementById('tempSlider');
+  const curVal = parseFloat(tempNum.value);
+  let converted;
+  if (newUnit === 'C') {
+    converted = f2c(curVal);
+    tempSlider.min = -20; tempSlider.max = 50;
+  } else {
+    converted = c2f(curVal);
+    tempSlider.min = 0; tempSlider.max = 120;
+  }
+  unit = newUnit;
+  tempNum.value = Math.round(converted);
+  tempSlider.value = Math.round(converted);
+  document.getElementById('tempUnitLabel').textContent = `°${unit}`;
+  document.getElementById('clockUnit').textContent = `°${unit}`;
+  document.getElementById('btnF').classList.toggle('active', unit === 'F');
+  document.getElementById('btnC').classList.toggle('active', unit === 'C');
+  renderLegend();
+  update();
+}
+
+document.getElementById('btnF').addEventListener('click', () => setUnit('F'));
+document.getElementById('btnC').addEventListener('click', () => setUnit('C'));
+
+wireControl('tempSlider','tempNum');
+wireControl('rhSlider','rhNum');
+
+// ---- Get local temperature (geolocation + NOAA / api.weather.gov, no API key required) ----
+function setLocateStatus(msg, kind){
+  const el = document.getElementById('locateStatus');
+  el.textContent = msg;
+  el.className = 'locate-status' + (kind ? ' ' + kind : '');
+}
+
+function setLocateBusy(busy){
+  const btn = document.getElementById('locateBtn');
+  const icon = document.getElementById('locateIcon');
+  const label = document.getElementById('locateLabel');
+  btn.disabled = busy;
+  icon.textContent = busy ? '⟳' : '📍';
+  icon.classList.toggle('spin', busy);
+  label.textContent = busy ? 'Locating…' : 'Get local temperature';
+}
+
+async function useLocalTemperature(){
+  if (!('geolocation' in navigator)) {
+    setLocateStatus('Geolocation isn\u2019t available in this browser.', 'error');
+    return;
+  }
+  setLocateBusy(true);
+  setLocateStatus('Finding your location…');
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, maximumAge: 300000 });
+    });
+    const { latitude, longitude } = pos.coords;
+    const lat = latitude.toFixed(4);
+    const lon = longitude.toFixed(4);
+    const geoHeaders = { 'Accept': 'application/geo+json' };
+
+    // 1. NOAA point lookup: gives the nearest-station list + a human-readable city/state
+    setLocateStatus('Contacting NOAA…');
+    const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers: geoHeaders });
+    if (!pointRes.ok) throw new Error('NOAA doesn\u2019t cover this location (US only).');
+    const pointData = await pointRes.json();
+    const stationsUrl = pointData.properties && pointData.properties.observationStations;
+    const rel = pointData.properties && pointData.properties.relativeLocation && pointData.properties.relativeLocation.properties;
+    const placeLabel = rel ? [rel.city, rel.state].filter(Boolean).join(', ') : '';
+    if (!stationsUrl) throw new Error('NOAA had no station data for this location.');
+
+    // 2. Nearest observation station
+    setLocateStatus('Finding nearest NOAA station…');
+    const stationsRes = await fetch(stationsUrl, { headers: geoHeaders });
+    if (!stationsRes.ok) throw new Error('Could not find a nearby NOAA station.');
+    const stationsData = await stationsRes.json();
+    const stationIds = (stationsData.features || []).map(f => f.id).filter(Boolean).slice(0, 6);
+    if (!stationIds.length) throw new Error('No NOAA station found nearby.');
+
+    // 3. Latest observation with actual temperature + humidity.
+    // Try the nearest station first; if its recent readings are incomplete
+    // (common with unstaffed sensors), move on to the next-closest station.
+    let reading = null;
+    for (let i = 0; i < stationIds.length; i++) {
+      setLocateStatus(`Checking NOAA station ${i + 1} of ${stationIds.length}…`);
+      try {
+        const obsRes = await fetch(`${stationIds[i]}/observations?limit=8`, { headers: geoHeaders });
+        if (!obsRes.ok) continue;
+        const obsData = await obsRes.json();
+        const found = (obsData.features || [])
+          .map(f => f.properties)
+          .find(p => p.temperature && p.temperature.value != null && p.relativeHumidity && p.relativeHumidity.value != null);
+        if (found) { reading = found; break; }
+      } catch (e) { /* try the next station */ }
+    }
+    if (!reading) throw new Error(`Checked ${stationIds.length} nearby NOAA stations, but none had a complete recent reading.`);
+
+    const tC = reading.temperature.value; // NOAA reports in Celsius
+    const rh = reading.relativeHumidity.value;
+    const t = unit === 'F' ? c2f(tC) : tC;
+
+    const tempNum = document.getElementById('tempNum');
+    const tempSlider = document.getElementById('tempSlider');
+    const rhNum = document.getElementById('rhNum');
+    const rhSlider = document.getElementById('rhSlider');
+
+    const tRounded = Math.round(t);
+    const rhRounded = Math.min(100, Math.max(1, Math.round(rh)));
+
+    tempNum.value = tRounded;
+    tempSlider.value = Math.min(parseFloat(tempSlider.max), Math.max(parseFloat(tempSlider.min), tRounded));
+    rhNum.value = rhRounded;
+    rhSlider.value = rhRounded;
+    update();
+
+    const conditionsText = `${tRounded}°${unit}, ${rhRounded}% RH`;
+    setLocateStatus(placeLabel ? `${placeLabel} — ${conditionsText} (NOAA)` : `NOAA: ${conditionsText}`, 'ok');
+  } catch (err) {
+    let msg = 'Could not get your local weather.';
+    if (err && err.code === 1) msg = 'Location permission denied.';
+    else if (err && err.code === 3) msg = 'Location request timed out.';
+    else if (err && err.message) msg = err.message;
+    setLocateStatus(msg, 'error');
+  } finally {
+    setLocateBusy(false);
+  }
+}
+
+document.getElementById('locateBtn').addEventListener('click', useLocalTemperature);
+
+buildGauge();
+renderLegend();
+update();
+</script>
+</body>
+</html>
