@@ -68,29 +68,80 @@
     font-size: 11px;
     color: var(--text-dim);
   }
+  .locate-row{
+    display:flex;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
   .locate-btn{
-    width: 100%;
+    flex: 1 1 58%;
+    min-width: 0;
     display:flex;
     align-items:center;
     justify-content:center;
-    gap: 8px;
+    gap: 7px;
     background: var(--ink);
     border: 1px solid var(--brass-dim);
     color: var(--brass);
     font-family: 'Space Mono', monospace;
-    font-size: 11.5px;
-    letter-spacing: 0.06em;
+    font-size: 11px;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    padding: 10px 12px;
+    padding: 10px 8px;
     border-radius: 10px;
     cursor: pointer;
-    margin-bottom: 6px;
     transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
   }
   .locate-btn:hover{ background: #202b38; border-color: var(--brass); }
   .locate-btn:disabled{ opacity: 0.55; cursor: default; }
   .locate-btn .spin{ display:inline-block; animation: spin 0.9s linear infinite; }
   @keyframes spin{ from{ transform: rotate(0deg); } to{ transform: rotate(360deg); } }
+  .zip-btn{
+    flex: 1 1 42%;
+    min-width: 0;
+    display:flex;
+    align-items:center;
+    background: var(--ink);
+    border: 1px solid var(--brass-dim);
+    border-radius: 10px;
+    padding: 4px 4px 4px 12px;
+    transition: border-color 0.15s;
+  }
+  .zip-btn:focus-within{ border-color: var(--brass); }
+  .zip-btn input{
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--parchment);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    padding: 8px 0;
+  }
+  .zip-btn input::placeholder{
+    color: rgba(154, 164, 173, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+  .zip-btn button{
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--brass);
+    color: var(--ink);
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .zip-btn button:hover{ background: #dcae63; }
+  .zip-btn button:disabled{ opacity: 0.5; cursor: default; }
   .locate-status{
     text-align:center;
     font-size: 11px;
@@ -348,10 +399,16 @@
     <span id="clockUnit">°F</span>
   </div>
 
-  <button id="locateBtn" class="locate-btn">
-    <span id="locateIcon">📍</span>
-    <span id="locateLabel">Get local temperature</span>
-  </button>
+  <div class="locate-row">
+    <button id="locateBtn" class="locate-btn">
+      <span id="locateIcon">📍</span>
+      <span id="locateLabel">Get local temp</span>
+    </button>
+    <div class="zip-btn">
+      <input type="text" id="zipInput" placeholder="ZipCode" inputmode="numeric" maxlength="5">
+      <button id="zipGoBtn" aria-label="Look up zip code">→</button>
+    </div>
+  </div>
   <div id="locateStatus" class="locate-status"></div>
 
   <div class="gauge-wrap">
@@ -617,10 +674,76 @@ function setLocateBusy(busy){
   const btn = document.getElementById('locateBtn');
   const icon = document.getElementById('locateIcon');
   const label = document.getElementById('locateLabel');
+  const zipGoBtn = document.getElementById('zipGoBtn');
+  const zipInput = document.getElementById('zipInput');
   btn.disabled = busy;
+  zipGoBtn.disabled = busy;
+  zipInput.disabled = busy;
   icon.textContent = busy ? '⟳' : '📍';
   icon.classList.toggle('spin', busy);
-  label.textContent = busy ? 'Locating…' : 'Get local temperature';
+  label.textContent = busy ? 'Locating…' : 'Get local temp';
+}
+
+// Shared NOAA lookup chain: point -> nearest stations -> latest complete observation.
+// Returns { tC, rh, placeLabel } or throws with a user-facing message.
+async function fetchNoaaConditions(latitude, longitude){
+  const lat = latitude.toFixed(4);
+  const lon = longitude.toFixed(4);
+  const geoHeaders = { 'Accept': 'application/geo+json' };
+
+  setLocateStatus('Contacting NOAA…');
+  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers: geoHeaders });
+  if (!pointRes.ok) throw new Error('NOAA doesn\u2019t cover this location (US only).');
+  const pointData = await pointRes.json();
+  const stationsUrl = pointData.properties && pointData.properties.observationStations;
+  const rel = pointData.properties && pointData.properties.relativeLocation && pointData.properties.relativeLocation.properties;
+  const placeLabel = rel ? [rel.city, rel.state].filter(Boolean).join(', ') : '';
+  if (!stationsUrl) throw new Error('NOAA had no station data for this location.');
+
+  setLocateStatus('Finding nearest NOAA station…');
+  const stationsRes = await fetch(stationsUrl, { headers: geoHeaders });
+  if (!stationsRes.ok) throw new Error('Could not find a nearby NOAA station.');
+  const stationsData = await stationsRes.json();
+  const stationIds = (stationsData.features || []).map(f => f.id).filter(Boolean).slice(0, 6);
+  if (!stationIds.length) throw new Error('No NOAA station found nearby.');
+
+  let reading = null;
+  for (let i = 0; i < stationIds.length; i++) {
+    setLocateStatus(`Checking NOAA station ${i + 1} of ${stationIds.length}…`);
+    try {
+      const obsRes = await fetch(`${stationIds[i]}/observations?limit=8`, { headers: geoHeaders });
+      if (!obsRes.ok) continue;
+      const obsData = await obsRes.json();
+      const found = (obsData.features || [])
+        .map(f => f.properties)
+        .find(p => p.temperature && p.temperature.value != null && p.relativeHumidity && p.relativeHumidity.value != null);
+      if (found) { reading = found; break; }
+    } catch (e) { /* try the next station */ }
+  }
+  if (!reading) throw new Error(`Checked ${stationIds.length} nearby NOAA stations, but none had a complete recent reading.`);
+
+  return { tC: reading.temperature.value, rh: reading.relativeHumidity.value, placeLabel };
+}
+
+function applyConditions(tC, rh, placeLabel, sourceLabel){
+  const t = unit === 'F' ? c2f(tC) : tC;
+
+  const tempNum = document.getElementById('tempNum');
+  const tempSlider = document.getElementById('tempSlider');
+  const rhNum = document.getElementById('rhNum');
+  const rhSlider = document.getElementById('rhSlider');
+
+  const tRounded = Math.round(t);
+  const rhRounded = Math.min(100, Math.max(1, Math.round(rh)));
+
+  tempNum.value = tRounded;
+  tempSlider.value = Math.min(parseFloat(tempSlider.max), Math.max(parseFloat(tempSlider.min), tRounded));
+  rhNum.value = rhRounded;
+  rhSlider.value = rhRounded;
+  update();
+
+  const conditionsText = `${tRounded}°${unit}, ${rhRounded}% RH`;
+  setLocateStatus(placeLabel ? `${placeLabel} — ${conditionsText} (${sourceLabel})` : `${sourceLabel}: ${conditionsText}`, 'ok');
 }
 
 async function useLocalTemperature(){
@@ -634,67 +757,8 @@ async function useLocalTemperature(){
     const pos = await new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, maximumAge: 300000 });
     });
-    const { latitude, longitude } = pos.coords;
-    const lat = latitude.toFixed(4);
-    const lon = longitude.toFixed(4);
-    const geoHeaders = { 'Accept': 'application/geo+json' };
-
-    // 1. NOAA point lookup: gives the nearest-station list + a human-readable city/state
-    setLocateStatus('Contacting NOAA…');
-    const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers: geoHeaders });
-    if (!pointRes.ok) throw new Error('NOAA doesn\u2019t cover this location (US only).');
-    const pointData = await pointRes.json();
-    const stationsUrl = pointData.properties && pointData.properties.observationStations;
-    const rel = pointData.properties && pointData.properties.relativeLocation && pointData.properties.relativeLocation.properties;
-    const placeLabel = rel ? [rel.city, rel.state].filter(Boolean).join(', ') : '';
-    if (!stationsUrl) throw new Error('NOAA had no station data for this location.');
-
-    // 2. Nearest observation station
-    setLocateStatus('Finding nearest NOAA station…');
-    const stationsRes = await fetch(stationsUrl, { headers: geoHeaders });
-    if (!stationsRes.ok) throw new Error('Could not find a nearby NOAA station.');
-    const stationsData = await stationsRes.json();
-    const stationIds = (stationsData.features || []).map(f => f.id).filter(Boolean).slice(0, 6);
-    if (!stationIds.length) throw new Error('No NOAA station found nearby.');
-
-    // 3. Latest observation with actual temperature + humidity.
-    // Try the nearest station first; if its recent readings are incomplete
-    // (common with unstaffed sensors), move on to the next-closest station.
-    let reading = null;
-    for (let i = 0; i < stationIds.length; i++) {
-      setLocateStatus(`Checking NOAA station ${i + 1} of ${stationIds.length}…`);
-      try {
-        const obsRes = await fetch(`${stationIds[i]}/observations?limit=8`, { headers: geoHeaders });
-        if (!obsRes.ok) continue;
-        const obsData = await obsRes.json();
-        const found = (obsData.features || [])
-          .map(f => f.properties)
-          .find(p => p.temperature && p.temperature.value != null && p.relativeHumidity && p.relativeHumidity.value != null);
-        if (found) { reading = found; break; }
-      } catch (e) { /* try the next station */ }
-    }
-    if (!reading) throw new Error(`Checked ${stationIds.length} nearby NOAA stations, but none had a complete recent reading.`);
-
-    const tC = reading.temperature.value; // NOAA reports in Celsius
-    const rh = reading.relativeHumidity.value;
-    const t = unit === 'F' ? c2f(tC) : tC;
-
-    const tempNum = document.getElementById('tempNum');
-    const tempSlider = document.getElementById('tempSlider');
-    const rhNum = document.getElementById('rhNum');
-    const rhSlider = document.getElementById('rhSlider');
-
-    const tRounded = Math.round(t);
-    const rhRounded = Math.min(100, Math.max(1, Math.round(rh)));
-
-    tempNum.value = tRounded;
-    tempSlider.value = Math.min(parseFloat(tempSlider.max), Math.max(parseFloat(tempSlider.min), tRounded));
-    rhNum.value = rhRounded;
-    rhSlider.value = rhRounded;
-    update();
-
-    const conditionsText = `${tRounded}°${unit}, ${rhRounded}% RH`;
-    setLocateStatus(placeLabel ? `${placeLabel} — ${conditionsText} (NOAA)` : `NOAA: ${conditionsText}`, 'ok');
+    const { tC, rh, placeLabel } = await fetchNoaaConditions(pos.coords.latitude, pos.coords.longitude);
+    applyConditions(tC, rh, placeLabel, 'NOAA');
   } catch (err) {
     let msg = 'Could not get your local weather.';
     if (err && err.code === 1) msg = 'Location permission denied.';
@@ -706,7 +770,39 @@ async function useLocalTemperature(){
   }
 }
 
+async function useZipTemperature(){
+  const zipInput = document.getElementById('zipInput');
+  const zip = zipInput.value.trim();
+  if (!/^\d{5}$/.test(zip)) {
+    setLocateStatus('Enter a 5-digit US zip code.', 'error');
+    return;
+  }
+  setLocateBusy(true);
+  setLocateStatus('Looking up zip code…');
+  try {
+    const zipRes = await fetch(`https://api.zippopotam.us/us/${zip}`);
+    if (!zipRes.ok) throw new Error('Zip code not found.');
+    const zipData = await zipRes.json();
+    const place = zipData.places && zipData.places[0];
+    if (!place) throw new Error('Zip code not found.');
+    const lat = parseFloat(place.latitude);
+    const lon = parseFloat(place.longitude);
+    const zipPlaceLabel = [place['place name'], place['state abbreviation']].filter(Boolean).join(', ');
+
+    const { tC, rh } = await fetchNoaaConditions(lat, lon);
+    applyConditions(tC, rh, zipPlaceLabel, 'NOAA');
+  } catch (err) {
+    setLocateStatus(err && err.message ? err.message : 'Could not look up that zip code.', 'error');
+  } finally {
+    setLocateBusy(false);
+  }
+}
+
 document.getElementById('locateBtn').addEventListener('click', useLocalTemperature);
+document.getElementById('zipGoBtn').addEventListener('click', useZipTemperature);
+document.getElementById('zipInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') useZipTemperature();
+});
 
 buildGauge();
 renderLegend();
